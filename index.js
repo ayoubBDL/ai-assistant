@@ -38,7 +38,7 @@ You are an AI assistant named Sophie, working at Ayoub's Automotive. Your role i
 - Always be polite and maintain a medium-paced speaking style.
 - When the conversation veers off-topic, gently bring it back with a polite reminder.
 ### First Message
-The first message you receive from the customer is their name and a summary of their last call, repeat this exact message to the customer as the greeting.
+The first message you receive from the parameters is their name and a summary of their last call, repeat this exact message to the customer as the greeting. if you can't find the name or the summary, use the default message.
 ### Handling FAQs
 Use the function \`question_and_answer\` to respond to common customer queries.
 ### Booking a Tow
@@ -113,13 +113,18 @@ fastify.all("/incoming-call", async (request, reply) => {
             const responseText = await webhookResponse.text(); // Get the text response from the webhook
             console.log("Make.com webhook response:", responseText);
             try {
-                const responseData = JSON.parse(responseText); // Try to parse the response as JSON
-                if (responseData && responseData.firstMessage) {
-                    firstMessage = responseData.firstMessage; // If there's a firstMessage in the response, use it
-                    console.log(
-                        "Parsed firstMessage from Make.com:",
-                        firstMessage,
-                    );
+                if(responseText === "Accepted") {
+                    console.log("Accepted response from Make.com webhook");
+                    firstMessage = "Hello, How can I assist you today?";
+                }else{
+                    const responseData = JSON.parse(responseText); // Try to parse the response as JSON
+                    if (responseData && responseData.firstMessage) {
+                        firstMessage = responseData.firstMessage; // If there's a firstMessage in the response, use it
+                        console.log(
+                            "Parsed firstMessage from Make.com:",
+                            firstMessage,
+                        );
+                    }
                 }
             } catch (parseError) {
                 console.error("Error parsing webhook response:", parseError); // Log any errors while parsing the response
@@ -164,6 +169,7 @@ fastify.register(async (fastify) => {
     fastify.get("/media-stream", { websocket: true }, (connection, req) => {
         console.log("Client connected to media-stream"); // Log when a client connects
 
+        console.log("Query Parameters:", req.query); // Log the query parameters
         let firstMessage = ""; // Placeholder for the first message
         let streamSid = ""; // Placeholder for the stream ID
         let openAiWsReady = false; // Flag to check if the OpenAI WebSocket is ready
@@ -256,8 +262,28 @@ fastify.register(async (fastify) => {
                     "Sending queued first message:",
                     queuedFirstMessage,
                 );
+                console.log(
+                    "Sending queued first message 22:",
+                    queuedFirstMessage?.item?.content,
+                );
+                queuedFirstMessage = {
+                    type: "conversation.item.create",
+                    item: {
+                        type: "message",
+                        role: "system",  // Change from 'user' to 'system'
+                        content: [
+                            { type: "input_text", text: `GREETING_SCRIPT: ${firstMessage}` }  // Mark it clearly as a script
+                        ],
+                    },
+                };
                 openAiWs.send(JSON.stringify(queuedFirstMessage)); // Send the first message
-                openAiWs.send(JSON.stringify({ type: "response.create" })); // Trigger AI to generate a response
+                openAiWs.send(JSON.stringify({
+                    type: "response.create",
+                    response: {
+                        modalities: ["text", "audio"],
+                        instructions: `Use this exact message as your greeting: ${firstMessage}`,
+                    },
+                })); // Trigger AI to generate a response
                 queuedFirstMessage = null; // Clear the queue
             }
         };
