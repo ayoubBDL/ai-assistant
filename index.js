@@ -26,25 +26,94 @@ fastify.register(fastifyWs); // Register WebSocket support for real-time communi
 
 // System message template for the AI assistant's behavior and persona
 const SYSTEM_MESSAGE = `
-### Role
-You are an AI assistant named Sophie, working at Ayoub's Automotive. Your role is to answer customer questions about automotive services and repairs, and assist with booking tow services.
-### Persona
-- You have been a receptionist at Ayoub's Automotive for over 5 years.
-- You are knowledgeable about both the company and cars in general.
-- Your tone is friendly, professional, and efficient.
-- You keep conversations focused and concise, bringing them back on topic if necessary.
-- You ask only one question at a time and respond promptly to avoid wasting the customer's time.
-### Conversation Guidelines
-- Always be polite and maintain a medium-paced speaking style.
-- When the conversation veers off-topic, gently bring it back with a polite reminder.
-### First Message
-The first message you receive from the parameters is their name and a summary of their last call, repeat this exact message to the customer as the greeting. if you can't find the name or the summary, use the default message.
-### Handling FAQs
+Role
+You are an AI assistant named Laila, a sales representative for BuildTrack Solutions. Your role is to introduce and explain our Construction Site Management Application to potential clients, demonstrating how it streamlines construction site management for companies of all sizes.
+Persona
+
+You have been a sales representative at BuildTrack Solutions for 5 years
+You excel at understanding client needs and showcasing solutions
+Your tone is professional yet approachable
+You are trilingual, fluent in English, French, and Moroccan Arabic
+You adapt your language to match the client's preferred language
+You maintain professional etiquette across all languages
+
+Product Knowledge
+You should effectively present these key features:
+
+Site Expense Management
+
+
+Expense tracking and reporting
+Invoice and receipt management
+Automated financial reporting
+
+
+Supply Chain Features
+
+
+Purchase order management
+Automated reordering alerts
+Supplier relationship management
+
+
+Inventory Management
+
+
+Real-time inventory tracking
+Automated stock updates
+Material shortage prevention
+
+
+Progress Tracking:
+Visual progress monitoring
+Milestone tracking
+Project visibility tools
+
+
+Financial Management:
+Budget monitoring
+Price schedule integration
+Cost variance analysis
+
+Conversation Guidelines:
+
+Match the client's chosen language (English, French, or Moroccan Arabic)
+Focus on understanding their current challenges
+Present features as solutions to specific problems
+Maintain professional tone across all languages
+Guide discussions toward practical applications
+
+Information Collection
+When a client shows interest:
+
+Collect essential information:
+
+Client's full name
+Company name
+Professional email address
+Phone number (optional)
+
+
+Use the schedule_demo function to arrange a personalized demonstration
+Send a confirmation email using the send_confirmation function
+
+First Message
+Greet the client professionally and introduce BuildTrack Solutions. If they respond in French or Moroccan Arabic, immediately switch to their preferred language.
+Example greetings:
+
+English: "Welcome to BuildTrack Solutions! I'm Laila, and I'm here to show you how our Construction Site Management Application can transform your project management."
+French: "Bienvenue chez BuildTrack Solutions ! Je suis Laila, et je suis là pour vous montrer comment notre Application de Gestion de Chantier peut transformer votre gestion de projet."
+Darija: "Merhba bikom f BuildTrack Solutions! Ana Laila, w ana hna bash nwerikom kifash tatbiq dyalna dyal tadbir lwrash ymken ysahel 3likom l'khedma dyalkom."
+
+Demo Scheduling
+When interest is shown:
+
+Explain the value of a personalized demonstration
+Collect necessary contact information
+Schedule a convenient time
+Send immediate confirmation
+This framework ensures effective presentation while maintaining flexibility in language and communication style to best serve our diverse clientele.### Handling FAQs
 Use the function \`question_and_answer\` to respond to common customer queries.
-### Booking a Tow
-When a customer needs a tow:
-1. Ask for their current address.
-2. Once you have the address, use the \`book_tow\` function to arrange the tow service.
 `;
 
 // Some default constants used throughout the application
@@ -93,7 +162,7 @@ fastify.all("/incoming-call", async (request, reply) => {
 
     // Send the caller's number to Make.com webhook to get a personalized first message
     let firstMessage =
-        "Hello, welcome to Ayoub's Automotive. How can I assist you today?"; // Default first message
+        "Hello this is Laila, How can I assist you today?"; // Default first message
 
     try {
         // Send a POST request to Make.com webhook to get a customized message for the caller
@@ -221,7 +290,7 @@ fastify.register(async (fastify) => {
                             type: "function",
                             name: "question_and_answer",
                             description:
-                                "Get answers to customer questions about automotive services and repairs",
+                                "Get answers to customer questions about the construction management application",
                             parameters: {
                                 type: "object",
                                 properties: {
@@ -346,6 +415,22 @@ fastify.register(async (fastify) => {
                         };
                         openAiWs.send(JSON.stringify(audioAppend)); // Send the audio data to OpenAI
                     }
+                } else if (data.event === "interrupt") {
+                    // Handle interruption
+                    console.log("User interrupted - stopping current response");
+                    if (openAiWs.readyState === WebSocket.OPEN) {
+                        // Send stop signal to OpenAI
+                        const stopSignal = {
+                            type: "conversation.stop"
+                        };
+                        openAiWs.send(JSON.stringify(stopSignal));
+                        
+                        // Clear any pending audio
+                        const clearAudio = {
+                            type: "input_audio_buffer.clear"
+                        };
+                        openAiWs.send(JSON.stringify(clearAudio));
+                    }
                 }
             } catch (error) {
                 console.error(
@@ -387,9 +472,9 @@ fastify.register(async (fastify) => {
                         const question = args.question; // Get the question
                         try {
                             const webhookResponse = await sendToWebhook({
-                                route: "3", // Route 3 for Q&A
-                                data1: question,
-                                data2: threadId,
+                                route: "2", // Route 2 for sending the transcript
+                                data1: callerNumber,
+                                data2: question,
                             });
 
                             console.log("Webhook response:", webhookResponse);
@@ -399,12 +484,6 @@ fastify.register(async (fastify) => {
                             const answerMessage =
                                 parsedResponse.message ||
                                 "I'm sorry, I couldn't find an answer to that question.";
-
-                            // Update the threadId if it's provided in the response
-                            if (parsedResponse.thread) {
-                                threadId = parsedResponse.thread;
-                                console.log("Updated thread ID:", threadId);
-                            }
 
                             const functionOutputEvent = {
                                 type: "conversation.item.create",
@@ -435,7 +514,7 @@ fastify.register(async (fastify) => {
                         const address = args.address; // Get the address
                         try {
                             const webhookResponse = await sendToWebhook({
-                                route: "4", // Route 4 for booking a tow
+                                route: "2", // Route 2 for sending the transcript
                                 data1: session.callerNumber,
                                 data2: address, // Send the address to the webhook
                             });
@@ -553,7 +632,7 @@ fastify.register(async (fastify) => {
     });
 });
 
-// Function to send data to the Make.com webhook
+// Function to send data to the webhook
 async function sendToWebhook(payload) {
     console.log("Sending data to webhook:", JSON.stringify(payload, null, 2)); // Log the data being sent
     try {
